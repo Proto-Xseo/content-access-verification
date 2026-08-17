@@ -1,0 +1,50 @@
+import { NextRequest, NextResponse } from 'next/server'
+
+const VIDEO_EXTENSIONS = /\.(mp4|webm|mov|m4v|mkv|avi)(?:[?#].*)?$/i
+const ABSOLUTE_URL = /^https?:\/\//i
+
+function absoluteUrl(value: string, base: string) {
+  try { return new URL(value, base).toString() } catch { return null }
+}
+
+function stripTags(value: string) {
+  return value.replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim()
+}
+
+function extractItems(html: string, pageUrl: string) {
+  const items: { id: string; title: string; url: string; pageUrl: string; kind: 'video' | 'file' }[] = []
+  const seen = new Set<string>()
+  const anchorPattern = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi
+  let match: RegExpExecArray | null
+  while ((match = anchorPattern.exec(html))) {
+    const url = absoluteUrl(match[1], pageUrl)
+    if (!url || seen.has(url) || url.startsWith('javascript:')) continue
+    const label = stripTags(match[2]) || decodeURIComponent(url.split('/').pop() || 'Untitled video')
+    const likelyMedia = VIDEO_EXTENSIONS.test(url) || /download|video|media|file/i.test(`${url} ${label}`)
+    if (!likelyMedia) continue
+    seen.add(url)
+    items.push({ id: `source-${items.length + 1}`, title: label.slice(0, 180), url, pageUrl, kind: VIDEO_EXTENSIONS.test(url) ? 'video' : 'file' })
+  }
+  return items
+}
+
+export async function GET(request: NextRequest) {
+  const source = request.nextUrl.searchParams.get('url')
+  if (!source) return NextResponse.json({ error: 'Missing source URL.' }, { status: 400 })
+  let origin: URL
+  try { origin = new URL(source) } catch { return NextResponse.json({ error: 'Enter a valid URL.' }, { status: 400 }) }
+
+  try {
+    const response = await fetch(origin, { headers: { accept: 'text/html,application/xhtml+xml' }, cache: 'no-store' })
+    if (!response.ok) return NextResponse.json({ error: `Source returned ${response.status}.` }, { status: 502 })
+    const html = await response.text()
+    const items = extractItems(html, origin.toString())
+    const pagination = [...html.matchAll(/href=["']([^"']+)["']/gi)].map((match) => absoluteUrl(match[1], origin.toString())).filter((url): url is string => Boolean(url) && new URL(url).origin === origin.origin && /page|p=|next/i.test(url))
+    return NextResponse.json({ source: origin.toString(), items, pagesDiscovered: new Set(pagination).size + 1, scannedAt: new Date().toISOString(), note: 'Only URLs exposed in the fetched page markup are included.' })
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unable to reach source.' }, { status: 502 })
+  }
+}
+
+export const dynamic = 'force-dynamic'
+export const maxDuration = 60
