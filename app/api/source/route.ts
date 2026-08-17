@@ -21,9 +21,11 @@ function extractItems(html: string, pageUrl: string) {
     const url = absoluteUrl(match[1], pageUrl)
     if (!url || seen.has(url) || url.startsWith('javascript:')) continue
     const label = stripTags(match[2]) || decodeURIComponent(url.split('/').pop() || 'Untitled video')
-    const isFilePage = FILE_PAGE.test(new URL(url).pathname)
-    const likelyMedia = VIDEO_EXTENSIONS.test(url) || isFilePage || /download|video|media|file/i.test(`${url} ${label}`)
-    if (!likelyMedia) continue
+    const parsed = new URL(url)
+    const isFilePage = FILE_PAGE.test(parsed.pathname)
+    const isMediaUrl = VIDEO_EXTENSIONS.test(`${parsed.pathname}${parsed.search}`)
+    const isDownloadUrl = /download|media/i.test(`${parsed.pathname} ${parsed.search} ${label}`) && parsed.pathname !== '/'
+    if (!isFilePage && !isMediaUrl && !isDownloadUrl) continue
     seen.add(url)
     items.push({ id: `source-${items.length + 1}`, title: label.slice(0, 180) || 'Untitled video', url, pageUrl, kind: VIDEO_EXTENSIONS.test(url) ? 'video' : 'file' })
   }
