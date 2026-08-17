@@ -71,7 +71,7 @@ def crawl_album(album_url, max_pages=None):
                 found.append(host + path)
                 new += 1
         print(f"page {page}: +{new} files (total {len(found)})")
-        if not re.search(rf"[?&]page={page + 1}\\b", html):
+        if not re.search(rf"[?&]page={page + 1}\b", html):
             break
         page += 1
         time.sleep(0.25)
@@ -82,8 +82,21 @@ def file_id_from_page(file_url):
     status, html = text(file_url, timeout=30)
     if status != 200:
         return None
-    match = re.search(r"/file/(\d+)", html) or re.search(r'data-file-id=["\'](\d+)["\']', html)
+    match = re.search(r'data-file-id=["\'](\d+)', html) or re.search(r'href=["\']https?://dl\.bunkr\.cr/file/(\d+)', html) or re.search(r"/file/(\d+)", html)
     return match.group(1) if match else None
+
+
+def official_download_url(file_id):
+    return f"https://dl.bunkr.cr/file/{urllib.parse.quote(str(file_id), safe='')}"
+
+
+def media_from_page(file_url):
+    status, html = text(file_url, timeout=30)
+    if status != 200:
+        return None
+    source = re.search(r'var\s+jsCDN\s*=\s*["\']([^"\']+)', html)
+    title = re.search(r'<title>\s*([^<]+?)\s*\|\s*Bunkr', html, re.I)
+    return {"source": source.group(1).replace('\\/', '/'), "original": title.group(1).strip() if title else None} if source else None
 
 
 def resolve_media(file_id):
@@ -116,18 +129,24 @@ def download_one(file_url, out_dir, retries):
     file_id = file_id_from_page(file_url)
     if not file_id:
         return f"FAIL: no file id {file_url}"
-    meta = resolve_media(file_id)
-    if not meta or "path" not in meta or "mediafiles" not in meta:
-        return f"FAIL: metadata unavailable {file_url}"
-    filename = re.sub(r'[\\/:*?"<>|]', "_", meta.get("original") or f"{file_id}.bin")
+    page_media = media_from_page(file_url)
+    meta = resolve_media(file_id) or {}
+    filename = re.sub(r'[\\/:*?"<>|]', "_", (meta or {}).get("original") or (page_media or {}).get("original") or f"{file_id}.bin")
     destination = out_dir / filename
+    source = (page_media or {}).get("source")
+    if not source and "path" in meta and "mediafiles" in meta:
+        source = meta["mediafiles"].rstrip("/") + meta["path"]
+    if not source:
+        return f"FAIL: media source unavailable {file_url}"
     if destination.exists() and destination.stat().st_size > 0:
         return f"SKIP {filename}"
     for attempt in range(1, retries + 1):
-        signed = sign_path(meta["path"])
+        parsed_source = urllib.parse.urlparse(source)
+        signed = sign_path(parsed_source.path)
         if signed and signed.get("token") and signed.get("ex"):
             try:
-                if download_stream(media_url(meta, signed), destination):
+                signed_url = source + ("&" if parsed_source.query else "?") + urllib.parse.urlencode({"token": signed["token"], "ex": signed["ex"]})
+                if download_stream(signed_url, destination):
                     return f"OK {filename} ({destination.stat().st_size} bytes)"
             except Exception:
                 pass
