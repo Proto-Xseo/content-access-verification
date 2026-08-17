@@ -37,7 +37,8 @@ export async function GET(request: NextRequest) {
     const { mediaUrl, filename } = await resolve(fileUrl)
     const upstream = await fetch(mediaUrl, { headers: { 'user-agent': UA, referer: `${process.env.DEFAULT_HOST || 'https://bunkr.cr'}/` }, cache: 'no-store' })
     if (!upstream.ok || !upstream.body) return NextResponse.json({ error: `Media returned ${upstream.status}.` }, { status: 502 })
-    return new Response(upstream.body, { status: 200, headers: { 'content-type': upstream.headers.get('content-type') || 'application/octet-stream', 'content-length': upstream.headers.get('content-length') || '', 'content-disposition': `attachment; filename="${filename.replaceAll('"', '')}"`, 'cache-control': 'no-store' } })
+    const inline = request.nextUrl.searchParams.get('inline') === '1'
+    return new Response(upstream.body, { status: 200, headers: { 'content-type': upstream.headers.get('content-type') || 'application/octet-stream', 'content-length': upstream.headers.get('content-length') || '', 'content-disposition': `${inline ? 'inline' : 'attachment'}; filename="${filename.replaceAll('"', '')}"`, 'cache-control': 'no-store', 'accept-ranges': 'bytes' } })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unable to resolve download.' }, { status: 502 })
   }
