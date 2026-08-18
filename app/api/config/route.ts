@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import { readFile, writeFile } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 
 const CONFIG_FILE = `${process.cwd()}/.courier-config.json`
-let runtimeConfig = { token: '', channels: [] as string[], webhookName: 'Archive Courier', webhookAvatar: '', concurrency: 8, splitSize: 10 }
+const DEFAULT_CONFIG = { token: '', channels: [] as string[], webhookName: 'Archive Courier', webhookAvatar: '', concurrency: 8, splitSize: 10 }
+let runtimeConfig = { ...DEFAULT_CONFIG }
 
 export async function GET() { try { const saved = JSON.parse(await readFile(CONFIG_FILE, 'utf8')); runtimeConfig = { ...runtimeConfig, ...saved } } catch {} return NextResponse.json({ config: { ...runtimeConfig, token: runtimeConfig.token ? '••••••••' : '' } }) }
 
@@ -15,4 +17,9 @@ export async function POST(request: Request) {
   return NextResponse.json({ ok: true, message: 'Configuration saved server-side for this private session.' })
 }
 
-export function getRuntimeConfig() { return runtimeConfig }
+export function getRuntimeConfig() {
+  // Always reconcile with the on-disk config so route handlers that run after a
+  // server restart (test, layout, transfer) never fall back to stale defaults.
+  try { const saved = JSON.parse(readFileSync(CONFIG_FILE, 'utf8')); runtimeConfig = { ...DEFAULT_CONFIG, ...saved } } catch {}
+  return runtimeConfig
+}

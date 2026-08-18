@@ -21,15 +21,23 @@ def clean(name):
     return re.sub(r'[\\/:*?"<>|]', '_', name)[:180]
 
 
-def post_file(token, channel, path, content, webhook=None, max_attempts=6):
+def post_file(token, channel, path, content, webhook=None, max_attempts=6, username=None, avatar_url=None):
     """Upload one file as a normal message/attachment. Handles 429 backoff.
 
+    When posting through a webhook, applies the configured display name and
+    avatar as per-message overrides so every upload carries your identity.
     Returns the final HTTP status code (200/204 = success)."""
     for attempt in range(1, max_attempts + 1):
         boundary = '----Courier' + uuid.uuid4().hex
         mime = mimetypes.guess_type(path.name)[0] or 'application/octet-stream'
+        payload = {"content": content}
+        if webhook:
+            if username:
+                payload["username"] = username
+            if avatar_url:
+                payload["avatar_url"] = avatar_url
         body = []
-        body.append(f'--{boundary}\r\nContent-Disposition: form-data; name="payload_json"\r\nContent-Type: application/json\r\n\r\n{json.dumps({"content": content})}\r\n'.encode())
+        body.append(f'--{boundary}\r\nContent-Disposition: form-data; name="payload_json"\r\nContent-Type: application/json\r\n\r\n{json.dumps(payload)}\r\n'.encode())
         body.append(f'--{boundary}\r\nContent-Disposition: form-data; name="files[0]"; filename="{clean(path.name)}"\r\nContent-Type: {mime}\r\n\r\n'.encode())
         body.append(path.read_bytes())
         body.append(f'\r\n--{boundary}--\r\n'.encode())
@@ -141,6 +149,8 @@ def main():
     ap.add_argument('--token', default=os.getenv('DISCORD_BOT_TOKEN'))
     ap.add_argument('--channels', required=True, help='comma-separated channel IDs')
     ap.add_argument('--webhooks', default='', help='comma-separated webhook execute URLs')
+    ap.add_argument('--webhook-name', default='', help='display name applied to every webhook message')
+    ap.add_argument('--webhook-avatar', default='', help='avatar URL applied to every webhook message')
     ap.add_argument('--album')
     ap.add_argument('--list')
     ap.add_argument('--out', default='courier-data')
@@ -196,7 +206,7 @@ def main():
                 parts = split_video(source, args.split_mb, Path(temp))
                 for part_index, part in enumerate(parts):
                     label = source.stem if len(parts) == 1 else f'{source.stem} — part {part_index + 1}/{len(parts)}'
-                    code = post_file(args.token, channel, part, label, webhook)
+                    code = post_file(args.token, channel, part, label, webhook, username=(args.webhook_name or None), avatar_url=(args.webhook_avatar or None))
                     if code not in (200, 204):
                         raise RuntimeError(f'Discord upload failed ({code})')
             save_state(state_file, state, target, {'status': 'complete', 'updated': time.time(), 'result': result['message']})

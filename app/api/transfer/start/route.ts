@@ -29,6 +29,8 @@ export async function POST(request: Request) {
     '--token', config.token,
     '--channels', channels,
     '--webhooks', webhooks,
+    '--webhook-name', config.webhookName || '',
+    '--webhook-avatar', config.webhookAvatar || '',
     '--album', album,
     '--out', DATA_DIR,
     '--concurrency', String(config.concurrency || 4),
