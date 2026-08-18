@@ -3,8 +3,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Vaultline — Personal media recovery',
-  description: 'A calm, local-first workspace for browsing and recovering your video archive.',
+  title: 'Courier Ledger — Private Discord transfer desk',
+  description: 'A private, resumable video recovery and Discord delivery control panel.',
   generator: 'v0.app',
   icons: {
     icon: [
