@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getRuntimeConfig } from '../../config/route'
 
-let layout: { guildId: string; categoryId: string; channels: { id: string; name: string; capacity: number }[] } | null = null
+let layout: { guildId: string; categoryId: string; channels: { id: string; name: string; capacity: number; webhookId?: string; webhookToken?: string }[] } | null = null
 
 export function getLayout() { return layout }
 
@@ -24,7 +24,10 @@ export async function POST(request: Request) {
     const response = await fetch(`https://discord.com/api/v10/guilds/${guildId}/channels`, { method: 'POST', headers, body: JSON.stringify({ name: `archive-${String(index + 1).padStart(2, '0')}`, type: 0, parent_id: category.id }) })
     const channel = await response.json().catch(() => null)
     if (!response.ok) return NextResponse.json({ error: `Could not create channel ${index + 1} (${response.status}).` }, { status: response.status })
-    channels.push({ id: channel.id, name: channel.name, capacity })
+    const webhookResponse = await fetch(`https://discord.com/api/v10/channels/${channel.id}/webhooks`, { method: 'POST', headers, body: JSON.stringify({ name: String(config.webhookName || 'Archive Courier'), avatar: config.webhookAvatar || null }) })
+    const webhook = await webhookResponse.json().catch(() => null)
+    if (!webhookResponse.ok) return NextResponse.json({ error: `Could not create webhook for channel ${index + 1} (${webhookResponse.status}).` }, { status: webhookResponse.status })
+    channels.push({ id: channel.id, name: channel.name, capacity, webhookId: webhook.id, webhookToken: webhook.token })
   }
   layout = { guildId, categoryId: category.id, channels }
   return NextResponse.json({ ok: true, layout, reused: false })
