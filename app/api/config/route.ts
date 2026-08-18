@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { readFile, writeFile } from 'node:fs/promises'
 
-const CONFIG_FILE = '/tmp/courier-ledger-config.json'
+const CONFIG_FILE = `${process.cwd()}/.courier-config.json`
 let runtimeConfig = { token: '', channels: [] as string[], webhookName: 'Archive Courier', webhookAvatar: '', concurrency: 8, splitSize: 10 }
 
 export async function GET() { try { const saved = JSON.parse(await readFile(CONFIG_FILE, 'utf8')); runtimeConfig = { ...runtimeConfig, ...saved } } catch {} return NextResponse.json({ config: { ...runtimeConfig, token: runtimeConfig.token ? '••••••••' : '' } }) }

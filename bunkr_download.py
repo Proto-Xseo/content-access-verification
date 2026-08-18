@@ -125,10 +125,15 @@ def download_stream(url, destination):
     return True
 
 
-def download_one(file_url, out_dir, retries):
+def resolve_download(file_url, out_dir, retries):
+    """Download a single /f/ URL and return a structured result.
+
+    Returns {"ok": bool, "skipped": bool, "path": Path|None, "message": str}.
+    """
+    out_dir = Path(out_dir)
     file_id = file_id_from_page(file_url)
     if not file_id:
-        return f"FAIL: no file id {file_url}"
+        return {"ok": False, "skipped": False, "path": None, "message": f"no file id {file_url}"}
     page_media = media_from_page(file_url)
     meta = resolve_media(file_id) or {}
     filename = re.sub(r'[\\/:*?"<>|]', "_", (meta or {}).get("original") or (page_media or {}).get("original") or f"{file_id}.bin")
@@ -137,9 +142,9 @@ def download_one(file_url, out_dir, retries):
     if not source and "path" in meta and "mediafiles" in meta:
         source = meta["mediafiles"].rstrip("/") + meta["path"]
     if not source:
-        return f"FAIL: media source unavailable {file_url}"
+        return {"ok": False, "skipped": False, "path": None, "message": f"media source unavailable {file_url}"}
     if destination.exists() and destination.stat().st_size > 0:
-        return f"SKIP {filename}"
+        return {"ok": True, "skipped": True, "path": destination, "message": f"SKIP {filename}"}
     for attempt in range(1, retries + 1):
         parsed_source = urllib.parse.urlparse(source)
         signed = sign_path(parsed_source.path)
@@ -147,11 +152,20 @@ def download_one(file_url, out_dir, retries):
             try:
                 signed_url = source + ("&" if parsed_source.query else "?") + urllib.parse.urlencode({"token": signed["token"], "ex": signed["ex"]})
                 if download_stream(signed_url, destination):
-                    return f"OK {filename} ({destination.stat().st_size} bytes)"
+                    return {"ok": True, "skipped": False, "path": destination, "message": f"OK {filename} ({destination.stat().st_size} bytes)"}
             except Exception:
                 pass
         time.sleep(1.5 * attempt)
-    return f"FAIL: exhausted retries {file_url}"
+    return {"ok": False, "skipped": False, "path": None, "message": f"exhausted retries {file_url}"}
+
+
+def download_one(file_url, out_dir, retries):
+    result = resolve_download(file_url, out_dir, retries)
+    if result["skipped"]:
+        return result["message"]
+    if result["ok"]:
+        return result["message"]
+    return f"FAIL: {result['message']}"
 
 
 def main():

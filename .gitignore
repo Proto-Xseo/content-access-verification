@@ -13,3 +13,8 @@ __v0_jsx-dev-runtime.ts
 node_modules
 .next/
 .DS_Store
+# Courier runtime state
+.courier-data/
+.courier-config.json
+.courier-test/
+.courier-itest/
